@@ -60,7 +60,7 @@ services:
   # ---------------------------------------------------------------------------
   frontend:
     build:
-      context: ./household-budget-frontend
+      context: .
       dockerfile: Dockerfile
     container_name: equibudget-frontend
     restart: unless-stopped
