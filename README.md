@@ -103,7 +103,7 @@ Das Gesamtsystem ist strikt nach Clean-Architecture-Prinzipien entworfen und in 
 ```text
 .
 ├── docker-compose.yml                 # Orchestrierung von db, backend und frontend
-├── .env.docker.example                # Vorlage für Produktions-Umgebungsvariablen
+├── .env.example                       # Vorlage für Produktions-Umgebungsvariablen
 │
 ├── household-budget-backend/          # Backend REST-API (Python / FastAPI)
 │   ├── app/
@@ -151,7 +151,7 @@ git clone https://github.com/moritztw/EquiBudget.git
 cd EquiBudget
 
 # Konfigurationsdatei aus Vorlage erzeugen:
-cp .env.docker.example .env
+cp .env.example .env
 ```
 
 ### 2. Umgebungsvariablen anpassen (`.env`)
