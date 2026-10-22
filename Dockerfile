@@ -4,21 +4,23 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install dependencies
-COPY package.json package-lock.json* bun.lock* ./
-RUN npm install
+# Copy only package.json to prevent lockfile conflicts
+COPY package.json ./
 
-# Build static bundle with Vite
+# Install dependencies cleanly with legacy peer deps
+RUN npm install --legacy-peer-deps --no-audit --no-fund
+
+# Copy source code and build Vite bundle
 COPY . .
 RUN npm run build
 
 # Stage 2: Production Nginx Server
 FROM nginx:alpine
 
-# Copy built assets
+# Copy built assets to Nginx html directory
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copy Nginx SPA & API reverse proxy configuration
+# Copy Nginx configuration with /api reverse proxy
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80

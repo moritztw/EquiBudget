@@ -1,0 +1,11 @@
+node_modules
+dist
+build
+.git
+.gitignore
+.DS_Store
+*.log
+bun.lock
+.env
+.env.local
+.env.*.local

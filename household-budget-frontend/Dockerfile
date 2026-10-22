@@ -4,11 +4,13 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package descriptors from root context if available, or current directory
-COPY ../package.json ../package-lock.json* ../bun.lock* ./
-RUN npm install
+# Copy only package.json
+COPY ../package.json ./
 
-# Build static bundle with Vite
+# Install dependencies cleanly with legacy peer deps
+RUN npm install --legacy-peer-deps --no-audit --no-fund
+
+# Copy source code and build Vite bundle
 COPY ../ .
 RUN npm run build
 

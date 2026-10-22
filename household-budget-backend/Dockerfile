@@ -5,11 +5,9 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Install runtime and build dependencies
+# Install curl for container health check
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    gcc \
-    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies
