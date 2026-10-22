@@ -148,7 +148,7 @@ Das Gesamtsystem ist strikt nach Clean-Architecture-Prinzipien entworfen und in 
 ### 1. Repository klonen & Umgebung einrichten
 ```bash
 git clone https://github.com/moritztw/EquiBudget.git
-cd equibudget
+cd EquiBudget
 
 # Konfigurationsdatei aus Vorlage erzeugen:
 cp .env.docker.example .env
