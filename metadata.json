@@ -1,0 +1,6 @@
+{
+  "name": "EquiBudget - Self-Hosted Household Finance & Accrual Engine",
+  "description": "Multi-tenant household budgeting with dynamic equitable splits (Equal Remaining Amount), virtual sinking funds accrual accounting, transaction matching, and self-hosted architecture blueprints.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

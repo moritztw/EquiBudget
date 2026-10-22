@@ -1,0 +1,486 @@
+import {
+  Account,
+  Budget,
+  ImportTemplate,
+  IncomeSource,
+  MatchingRule,
+  Person,
+  RecurringExpense,
+  Tenant,
+  Transaction,
+  User,
+  VirtualSinkingFund,
+} from '../types/household';
+
+export interface HouseholdDataState {
+  currentTenant: Tenant;
+  tenants: Tenant[];
+  currentUser: User;
+  persons: Person[];
+  incomes: IncomeSource[];
+  budgets: Budget[];
+  recurringExpenses: RecurringExpense[];
+  sinkingFunds: VirtualSinkingFund[];
+  accounts: Account[];
+  transactions: Transaction[];
+  matchingRules: MatchingRule[];
+  importTemplates: ImportTemplate[];
+}
+
+export const initialTenants: Tenant[] = [
+  {
+    id: 'tenant-01',
+    name: 'The Miller-Schneider Household',
+    currency: 'EUR',
+    timezone: 'Europe/Berlin',
+    createdAt: '2025-01-15T08:00:00Z',
+  },
+  {
+    id: 'tenant-02',
+    name: 'Flatshare WG Kreuzberg (3 Roommates)',
+    currency: 'EUR',
+    timezone: 'Europe/Berlin',
+    createdAt: '2025-03-01T10:00:00Z',
+  },
+];
+
+export const initialUsers: User[] = [
+  {
+    id: 'user-01',
+    email: 'moritz.schneider@example.com',
+    name: 'Moritz Schneider',
+    role: 'admin',
+    authMethod: 'proxy_header',
+    externalAuthId: 'oidc|moritz-auth-7712',
+  },
+];
+
+export const initialPersons: Person[] = [
+  {
+    id: 'p-moritz',
+    tenantId: 'tenant-01',
+    userId: 'user-01',
+    name: 'Moritz',
+    avatar: '👨‍💻',
+    color: '#6366f1', // Indigo
+    isEarner: true,
+    notes: 'Senior Software Engineer (Full-time)',
+  },
+  {
+    id: 'p-sarah',
+    tenantId: 'tenant-01',
+    name: 'Sarah',
+    avatar: '👩‍🔬',
+    color: '#10b981', // Emerald
+    isEarner: true,
+    notes: 'Clinical Researcher (80% Part-time)',
+  },
+  {
+    id: 'p-leo',
+    tenantId: 'tenant-01',
+    name: 'Leo',
+    avatar: '🧒',
+    color: '#f59e0b', // Amber
+    isEarner: false,
+    notes: 'Child (5 yo) - Kindergeld recipient',
+  },
+];
+
+export const initialIncomes: IncomeSource[] = [
+  {
+    id: 'inc-01',
+    tenantId: 'tenant-01',
+    personId: 'p-moritz',
+    name: 'Moritz Tech Salary (Net)',
+    grossAmount: 5800,
+    netAmount: 3600,
+    frequency: 'monthly',
+    isActive: true,
+  },
+  {
+    id: 'inc-02',
+    tenantId: 'tenant-01',
+    personId: 'p-sarah',
+    name: 'Sarah Research Salary (Net)',
+    grossAmount: 3900,
+    netAmount: 2400,
+    frequency: 'monthly',
+    isActive: true,
+  },
+  {
+    id: 'inc-03',
+    tenantId: 'tenant-01',
+    personId: null, // Global Household Income
+    name: 'German Child Benefit (Kindergeld)',
+    grossAmount: 250,
+    netAmount: 250,
+    frequency: 'monthly',
+    isActive: true,
+  },
+];
+
+export const initialBudgets: Budget[] = [
+  {
+    id: 'b-rent',
+    tenantId: 'tenant-01',
+    name: 'Warm Rent & Facility Fee',
+    category: 'Housing',
+    monthlyLimit: 1450,
+    isRollover: false,
+    currentCarryover: 0,
+    icon: 'Home',
+    color: 'blue',
+  },
+  {
+    id: 'b-groceries',
+    tenantId: 'tenant-01',
+    name: 'Groceries & Household Supplies',
+    category: 'Daily Living',
+    monthlyLimit: 800,
+    isRollover: true,
+    currentCarryover: 65,
+    icon: 'ShoppingCart',
+    color: 'emerald',
+  },
+  {
+    id: 'b-utilities',
+    tenantId: 'tenant-01',
+    name: 'Fiber Internet & Electricity',
+    category: 'Utilities',
+    monthlyLimit: 210,
+    isRollover: false,
+    currentCarryover: 0,
+    icon: 'Zap',
+    color: 'amber',
+  },
+  {
+    id: 'b-childcare',
+    tenantId: 'tenant-01',
+    name: 'Kita Childcare & Activities',
+    category: 'Family',
+    monthlyLimit: 320,
+    isRollover: false,
+    currentCarryover: 0,
+    icon: 'HeartHandshake',
+    color: 'pink',
+  },
+  {
+    id: 'b-dining',
+    tenantId: 'tenant-01',
+    name: 'Shared Dining & Family Outings',
+    category: 'Lifestyle',
+    monthlyLimit: 280,
+    isRollover: true,
+    currentCarryover: 40,
+    icon: 'Utensils',
+    color: 'violet',
+  },
+];
+
+export const initialRecurringExpenses: RecurringExpense[] = [
+  {
+    id: 'rec-01',
+    tenantId: 'tenant-01',
+    budgetId: 'b-sinking',
+    name: 'Car Insurance & Annual TÜV Inspection (HUK-Coburg)',
+    payee: 'HUK-COBURG Haftpflicht',
+    frequency: 'annually',
+    amount: 1200,
+    currentMonthlyProvision: 100,
+    nextDueDate: '2026-12-01',
+    startDate: '2025-01-01',
+    sinkingFundId: 'fund-car',
+  },
+  {
+    id: 'rec-02',
+    tenantId: 'tenant-01',
+    budgetId: 'b-sinking',
+    name: 'Quarterly District Heating Advance (Stadtwerke)',
+    payee: 'Stadtwerke Fernwärme',
+    frequency: 'quarterly',
+    amount: 450,
+    currentMonthlyProvision: 150,
+    nextDueDate: '2026-11-15',
+    startDate: '2025-01-01',
+    sinkingFundId: 'fund-heating',
+  },
+  {
+    id: 'rec-03',
+    tenantId: 'tenant-01',
+    budgetId: 'b-sinking',
+    name: 'Family Summer Vacation Accrual',
+    payee: 'Vacation Reserve',
+    frequency: 'annually',
+    amount: 3600,
+    currentMonthlyProvision: 300,
+    nextDueDate: '2027-06-30',
+    startDate: '2025-07-01',
+    sinkingFundId: 'fund-vacation',
+  },
+  {
+    id: 'rec-04',
+    tenantId: 'tenant-01',
+    budgetId: 'b-sinking',
+    name: 'Semi-Annual Municipal Property & Water Tax',
+    payee: 'Stadtkämmerei Grundabgaben',
+    frequency: 'semi_annually',
+    amount: 600,
+    currentMonthlyProvision: 100,
+    nextDueDate: '2027-02-15',
+    startDate: '2025-01-01',
+    sinkingFundId: 'fund-tax',
+  },
+];
+
+export const initialSinkingFunds: VirtualSinkingFund[] = [
+  {
+    id: 'fund-car',
+    tenantId: 'tenant-01',
+    recurringExpenseId: 'rec-01',
+    name: 'Car Insurance & Inspection',
+    targetAmount: 1200,
+    currentBalance: 1000,
+    monthlyAccrualRate: 100,
+    targetDate: '2026-12-01',
+    lastAccruedAt: '2026-10-01T00:00:00Z',
+    status: 'accruing',
+    icon: 'Car',
+  },
+  {
+    id: 'fund-heating',
+    tenantId: 'tenant-01',
+    recurringExpenseId: 'rec-02',
+    name: 'District Heating Advance',
+    targetAmount: 450,
+    currentBalance: 300,
+    monthlyAccrualRate: 150,
+    targetDate: '2026-11-15',
+    lastAccruedAt: '2026-10-01T00:00:00Z',
+    status: 'accruing',
+    icon: 'Flame',
+  },
+  {
+    id: 'fund-vacation',
+    tenantId: 'tenant-01',
+    recurringExpenseId: 'rec-03',
+    name: 'Annual Summer Vacation',
+    targetAmount: 3600,
+    currentBalance: 2400,
+    monthlyAccrualRate: 300,
+    targetDate: '2027-06-30',
+    lastAccruedAt: '2026-10-01T00:00:00Z',
+    status: 'accruing',
+    icon: 'Palmtree',
+  },
+  {
+    id: 'fund-tax',
+    tenantId: 'tenant-01',
+    recurringExpenseId: 'rec-04',
+    name: 'Municipal Property & Waste Tax',
+    targetAmount: 600,
+    currentBalance: 400,
+    monthlyAccrualRate: 100,
+    targetDate: '2027-02-15',
+    lastAccruedAt: '2026-10-01T00:00:00Z',
+    status: 'accruing',
+    icon: 'Landmark',
+  },
+];
+
+export const initialAccounts: Account[] = [
+  {
+    id: 'acc-joint',
+    tenantId: 'tenant-01',
+    personId: null, // Joint Household Checking
+    name: 'Joint Household Checking (DKB)',
+    type: 'checking',
+    ibanOrMask: 'DE89 1203 0000 1192 8492 00',
+    currentBalance: 4850.5,
+    currency: 'EUR',
+    institution: 'DKB Girokonto',
+  },
+  {
+    id: 'acc-savings',
+    tenantId: 'tenant-01',
+    personId: null,
+    name: 'Household Sinking Funds Vault (Tagesgeld)',
+    type: 'savings',
+    ibanOrMask: 'DE21 1203 0000 8829 1044 19',
+    currentBalance: 4100.0,
+    currency: 'EUR',
+    institution: 'Trade Republic 3.25%',
+  },
+  {
+    id: 'acc-moritz',
+    tenantId: 'tenant-01',
+    personId: 'p-moritz',
+    name: "Moritz's Personal Account",
+    type: 'checking',
+    ibanOrMask: 'DE44 1001 1001 2291 9384 11',
+    currentBalance: 1240.2,
+    currency: 'EUR',
+    institution: 'N26 Smart',
+  },
+  {
+    id: 'acc-sarah',
+    tenantId: 'tenant-01',
+    personId: 'p-sarah',
+    name: "Sarah's Personal Account",
+    type: 'checking',
+    ibanOrMask: 'DE33 5008 0000 0948 1839 44',
+    currentBalance: 980.6,
+    currency: 'EUR',
+    institution: 'Commerzbank',
+  },
+];
+
+export const initialMatchingRules: MatchingRule[] = [
+  {
+    id: 'rule-01',
+    tenantId: 'tenant-01',
+    name: 'Landlord Apartment Rent',
+    priority: 10,
+    patternType: 'iban_exact',
+    matchPattern: 'DE02 1005 0000 1234 5678 90',
+    targetBudgetId: 'b-rent',
+    targetCategory: 'Housing',
+  },
+  {
+    id: 'rule-02',
+    tenantId: 'tenant-01',
+    name: 'Supermarket Chains',
+    priority: 8,
+    patternType: 'payee_regex',
+    matchPattern: 'REWE|EDEKA|ALDI|LIDL|KAUFLAND|PENNY',
+    targetBudgetId: 'b-groceries',
+    targetCategory: 'Daily Living',
+  },
+  {
+    id: 'rule-03',
+    tenantId: 'tenant-01',
+    name: 'Fiber Internet Provider',
+    priority: 7,
+    patternType: 'payee_regex',
+    matchPattern: 'VODAFONE|TELEKOM|1&1',
+    targetBudgetId: 'b-utilities',
+    targetCategory: 'Utilities',
+  },
+  {
+    id: 'rule-04',
+    tenantId: 'tenant-01',
+    name: 'HUK Car Insurance Offset',
+    priority: 9,
+    patternType: 'payee_regex',
+    matchPattern: 'HUK-COBURG',
+    targetSinkingFundId: 'fund-car',
+    targetCategory: 'Car Insurance & Inspection',
+  },
+];
+
+export const initialImportTemplates: ImportTemplate[] = [
+  {
+    id: 'tmpl-dkb',
+    tenantId: 'tenant-01',
+    bankName: 'DKB (Deutsche Kreditbank)',
+    fileFormat: 'csv',
+    delimiter: ';',
+    dateFormat: 'DD.MM.YYYY',
+    columnMapping: {
+      dateCol: 'Buchungstag',
+      amountCol: 'Betrag (EUR)',
+      payeeCol: 'Zahlungsempfaenger*in',
+      purposeCol: 'Verwendungszweck',
+      ibanCol: 'IBAN',
+    },
+  },
+  {
+    id: 'tmpl-generic',
+    tenantId: 'tenant-01',
+    bankName: 'Generic CSV / CAMT.053',
+    fileFormat: 'csv',
+    delimiter: ',',
+    dateFormat: 'YYYY-MM-DD',
+    columnMapping: {
+      dateCol: 'Date',
+      amountCol: 'Amount',
+      payeeCol: 'Payee',
+      purposeCol: 'Description',
+      ibanCol: 'IBAN',
+    },
+  },
+];
+
+export const sampleImportedTransactions: Transaction[] = [
+  {
+    id: 'tx-01',
+    tenantId: 'tenant-01',
+    accountId: 'acc-joint',
+    date: '2026-10-18',
+    amount: -1200.0,
+    payee: 'HUK-COBURG Haftpflicht',
+    purposeText: 'Versicherungsbeitrag Kfz 2026/2027 VS-Nr 8829104',
+    iban: 'DE55 7805 0000 0012 3456 78',
+    status: 'unmatched',
+  },
+  {
+    id: 'tx-02',
+    tenantId: 'tenant-01',
+    accountId: 'acc-joint',
+    date: '2026-10-19',
+    amount: -1450.0,
+    payee: 'Hausverwaltung Becker & Partner',
+    purposeText: 'Miete 10/2026 Whg 4.OG links',
+    iban: 'DE02 1005 0000 1234 5678 90',
+    status: 'unmatched',
+  },
+  {
+    id: 'tx-03',
+    tenantId: 'tenant-01',
+    accountId: 'acc-joint',
+    date: '2026-10-20',
+    amount: -94.35,
+    payee: 'REWE Markt GmbH Fil. 410',
+    purposeText: 'Kartenzahlung girocard Ref 891283',
+    status: 'unmatched',
+  },
+  {
+    id: 'tx-04',
+    tenantId: 'tenant-01',
+    accountId: 'acc-joint',
+    date: '2026-10-21',
+    amount: -39.99,
+    payee: 'Vodafone Deutschland GmbH',
+    purposeText: 'Kabel Internet 500 Mbit KDNR 992819',
+    status: 'unmatched',
+  },
+  {
+    id: 'tx-05',
+    tenantId: 'tenant-01',
+    accountId: 'acc-joint',
+    date: '2026-10-21',
+    amount: -450.0,
+    payee: 'Stadtwerke Fernwärme',
+    purposeText: 'Abschlag Q4 Fernwaerme Zaehler 884920',
+    status: 'unmatched',
+  },
+  {
+    id: 'tx-06',
+    tenantId: 'tenant-01',
+    accountId: 'acc-joint',
+    date: '2026-10-22',
+    amount: -78.4,
+    payee: 'Shell Tankstelle Berlin Mitte',
+    purposeText: 'Kraftstoff Super E10 Beleg 982',
+    status: 'unmatched',
+  },
+  {
+    id: 'tx-07',
+    tenantId: 'tenant-01',
+    accountId: 'acc-joint',
+    date: '2026-10-22',
+    amount: -17.99,
+    payee: 'Netflix International B.V.',
+    purposeText: 'Standard Subscription Abo 10/2026',
+    status: 'unmatched',
+  },
+];
