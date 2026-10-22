@@ -1,0 +1,92 @@
+services:
+  # ---------------------------------------------------------------------------
+  # 1. Database Engine: PostgreSQL 16 Alpine
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: equibudget-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-equibudget}
+      POSTGRES_USER: ${POSTGRES_USER:-equibudget}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_super_secret_db_pass}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - equibudget-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-equibudget} -d ${POSTGRES_DB:-equibudget}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # 2. Backend REST API: FastAPI / SQLAlchemy 2.0 / Forward-Auth Support
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./household-budget-backend
+      dockerfile: Dockerfile
+    container_name: equibudget-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Database connection string linking directly to the 'db' service container
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-equibudget}:${POSTGRES_PASSWORD:-change_me_super_secret_db_pass}@db:5432/${POSTGRES_DB:-equibudget}
+      
+      # Reverse-Proxy / Forward-Auth Configuration (Pangolin / Authelia / Traefik / Newt)
+      AUTH_MODE: ${AUTH_MODE:-reverse_proxy} # 'reverse_proxy' (Header Auth) oder 'standalone_jwt'
+      FORWARDED_USER_HEADER: ${FORWARDED_USER_HEADER:-X-Forwarded-User}
+      FORWARDED_EMAIL_HEADER: ${FORWARDED_EMAIL_HEADER:-X-Auth-Request-Email}
+      FORWARDED_GROUPS_HEADER: ${FORWARDED_GROUPS_HEADER:-X-Forwarded-Groups}
+      
+      # Fallback JWT Secret für lokale Entwicklung ohne Reverse-Proxy
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-insecure_dev_jwt_secret_change_in_prod}
+      
+      # Transaktions-Matching & KI-Plugin Konfiguration
+      AI_CLASSIFIER_PROVIDER: ${AI_CLASSIFIER_PROVIDER:-gemini} # 'gemini', 'ollama' oder 'heuristic'
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    networks:
+      - equibudget-network
+    expose:
+      - "8000"
+
+  # ---------------------------------------------------------------------------
+  # 3. Frontend SPA: Vue 3 / React Single Page Application (Nginx / Vite)
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./household-budget-frontend
+      dockerfile: Dockerfile
+    container_name: equibudget-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      # API Proxy Pfad oder Backend Service URL
+      VITE_API_URL: ${VITE_API_URL:-/api}
+    networks:
+      - equibudget-network
+    ports:
+      # Exponierter Web-Port für Zugriff oder Reverse-Proxy-Ingress
+      - "${FRONTEND_PORT:-3000}:80"
+
+# -----------------------------------------------------------------------------
+# Persistente Volumes
+# -----------------------------------------------------------------------------
+volumes:
+  postgres_data:
+    name: equibudget_postgres_data
+    driver: local
+
+# -----------------------------------------------------------------------------
+# Dediziertes Anwendungs-Netzwerk
+# -----------------------------------------------------------------------------
+networks:
+  equibudget-network:
+    name: equibudget-network
+    driver: bridge

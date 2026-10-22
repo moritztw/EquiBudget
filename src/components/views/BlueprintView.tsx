@@ -452,28 +452,29 @@ class AccrualCalculator:
     { method: 'GET', path: '/api/v1/accounts/reconciliation', desc: 'Physical bank cash vs virtual sinking fund earmarked balances' },
   ];
 
-  // Section 6: Docker Compose
-  const dockerComposeYaml = `version: "3.9"
-
-services:
-  postgres:
+  const dockerComposeYaml = `services:
+  # 1. PostgreSQL 16 Database
+  db:
     image: postgres:16-alpine
-    container_name: equibudget-postgres
+    container_name: equibudget-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: equibudget_db
-      POSTGRES_USER: equibudget_user
+      POSTGRES_DB: \${POSTGRES_DB:-equibudget}
+      POSTGRES_USER: \${POSTGRES_USER:-equibudget}
       POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:-change_me_super_secret_db_pass}
+      PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - internal_network
+      - equibudget-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U equibudget_user -d equibudget_db"]
+      test: ["CMD-SHELL", "pg_isready -U \${POSTGRES_USER:-equibudget} -d \${POSTGRES_DB:-equibudget}"]
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
+  # 2. FastAPI Backend Engine
   backend:
     build:
       context: ./household-budget-backend
@@ -481,23 +482,23 @@ services:
     container_name: equibudget-backend
     restart: unless-stopped
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+asyncpg://equibudget_user:\${POSTGRES_PASSWORD:-change_me_super_secret_db_pass}@postgres:5432/equibudget_db
-      AUTH_MODE: reverse_proxy          # 'reverse_proxy' or 'standalone_jwt'
-      FORWARDED_USER_HEADER: X-Forwarded-User
-      FORWARDED_EMAIL_HEADER: X-Auth-Request-Email
-      FORWARDED_GROUPS_HEADER: X-Forwarded-Groups
+      DATABASE_URL: postgresql+asyncpg://\${POSTGRES_USER:-equibudget}:\${POSTGRES_PASSWORD:-change_me_super_secret_db_pass}@db:5432/\${POSTGRES_DB:-equibudget}
+      AUTH_MODE: \${AUTH_MODE:-reverse_proxy} # 'reverse_proxy' oder 'standalone_jwt'
+      FORWARDED_USER_HEADER: \${FORWARDED_USER_HEADER:-X-Forwarded-User}
+      FORWARDED_EMAIL_HEADER: \${FORWARDED_EMAIL_HEADER:-X-Auth-Request-Email}
+      FORWARDED_GROUPS_HEADER: \${FORWARDED_GROUPS_HEADER:-X-Forwarded-Groups}
       JWT_SECRET_KEY: \${JWT_SECRET_KEY:-insecure_dev_jwt_secret}
-      AI_CLASSIFIER_PROVIDER: gemini
+      AI_CLASSIFIER_PROVIDER: \${AI_CLASSIFIER_PROVIDER:-gemini}
       GEMINI_API_KEY: \${GEMINI_API_KEY:-}
     networks:
-      - internal_network
-      - proxy_network
+      - equibudget-network
     expose:
       - "8000"
 
+  # 3. SPA Frontend (Nginx / Vite)
   frontend:
     build:
       context: ./household-budget-frontend
@@ -506,21 +507,22 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+    environment:
+      VITE_API_URL: \${VITE_API_URL:-/api}
     networks:
-      - internal_network
-      - proxy_network
+      - equibudget-network
     ports:
-      - "3000:80"
+      - "\${FRONTEND_PORT:-3000}:80"
 
 volumes:
   postgres_data:
+    name: equibudget_postgres_data
     driver: local
 
 networks:
-  internal_network:
-    internal: true
-  proxy_network:
-    external: false`;
+  equibudget-network:
+    name: equibudget-network
+    driver: bridge`;
 
   return (
     <div className="space-y-6">
