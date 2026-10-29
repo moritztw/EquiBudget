@@ -68,6 +68,18 @@ class MissingTenantContextError(ApplicationError):
         )
 
 
+class UnauthorizedError(ApplicationError):
+    """Raised when a supplied JWT Bearer token is malformed, expired, or invalid."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(
+            detail,
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            title="Authentication Failed",
+            error_code="AUTHENTICATION_FAILED",
+        )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Attach RFC 7807 ProblemDetails handlers for domain, application, and DB integrity errors."""
 

@@ -5,8 +5,8 @@ import uuid
 from fastapi import APIRouter, status
 
 from app.api.deps import DbSessionDep
-from app.api.errors import DomainValidationResponseError
 from app.domain.accrual_engine import AccrualEngine, normalize_to_month_start
+from app.domain.exceptions import DomainValidationError
 from app.domain.money import ZERO, quantize_cents
 from app.models.enums import RecurrenceInterval
 from app.repositories.budget_repository import HouseholdRepository, TenantRepository
@@ -70,7 +70,7 @@ async def bootstrap_clean_instance(
     person_ref_map: dict[str, uuid.UUID] = {}
     for person_seed in payload.persons:
         if person_seed.client_ref in person_ref_map:
-            raise DomainValidationResponseError(
+            raise DomainValidationError(
                 f"Duplicate person client_ref '{person_seed.client_ref}' in setup payload."
             )
         person = await household_repo.create_person(
@@ -100,14 +100,14 @@ async def bootstrap_clean_instance(
     created_accounts = []
     for account_seed in payload.accounts:
         if account_seed.client_ref in account_ref_map:
-            raise DomainValidationResponseError(
+            raise DomainValidationError(
                 f"Duplicate account client_ref '{account_seed.client_ref}' in setup payload."
             )
         owner_id: uuid.UUID | None = None
         if account_seed.owner_person_ref is not None:
             owner_id = person_ref_map.get(account_seed.owner_person_ref)
             if owner_id is None:
-                raise DomainValidationResponseError(
+                raise DomainValidationError(
                     f"Unknown owner_person_ref '{account_seed.owner_person_ref}' on account '{account_seed.name}'."
                 )
 
@@ -137,7 +137,7 @@ async def bootstrap_clean_instance(
     category_ref_map: dict[str, uuid.UUID] = {}
     for category_seed in payload.categories:
         if category_seed.client_ref in category_ref_map:
-            raise DomainValidationResponseError(
+            raise DomainValidationError(
                 f"Duplicate category client_ref '{category_seed.client_ref}' in setup payload."
             )
         category = await household_repo.create_category(
@@ -153,14 +153,14 @@ async def bootstrap_clean_instance(
     for payment_seed in payload.planned_payments:
         backing_account_id = account_ref_map.get(payment_seed.backing_account_ref)
         if backing_account_id is None:
-            raise DomainValidationResponseError(
+            raise DomainValidationError(
                 f"Unknown backing_account_ref '{payment_seed.backing_account_ref}' on planned payment '{payment_seed.name}'."
             )
         category_id: uuid.UUID | None = None
         if payment_seed.category_ref is not None:
             category_id = category_ref_map.get(payment_seed.category_ref)
             if category_id is None:
-                raise DomainValidationResponseError(
+                raise DomainValidationError(
                     f"Unknown category_ref '{payment_seed.category_ref}' on planned payment '{payment_seed.name}'."
                 )
 

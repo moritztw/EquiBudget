@@ -1,0 +1,85 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: equibudget-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-equibudget}
+      POSTGRES_USER: ${POSTGRES_USER:-equibudget}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Bitte POSTGRES_PASSWORD in der .env-Datei setzen}
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - equibudget_pgdata:/var/lib/postgresql/data
+    networks:
+      - equibudget_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-equibudget} -d $${POSTGRES_DB:-equibudget}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  backend:
+    build:
+      context: ./household-budget-backend
+      dockerfile: Dockerfile
+    container_name: equibudget-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      EQUIBUDGET_ENVIRONMENT: ${EQUIBUDGET_ENVIRONMENT:-production}
+      EQUIBUDGET_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-equibudget}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-equibudget}
+      EQUIBUDGET_WEB_CONCURRENCY: ${EQUIBUDGET_WEB_CONCURRENCY:-2}
+      EQUIBUDGET_FORWARD_AUTH_ENABLED: ${EQUIBUDGET_FORWARD_AUTH_ENABLED:-true}
+      EQUIBUDGET_FORWARD_AUTH_USER_HEADER: ${EQUIBUDGET_FORWARD_AUTH_USER_HEADER:-X-Forwarded-User}
+      EQUIBUDGET_FORWARD_AUTH_EMAIL_HEADER: ${EQUIBUDGET_FORWARD_AUTH_EMAIL_HEADER:-X-Forwarded-Email}
+      EQUIBUDGET_JWT_SECRET_KEY: ${EQUIBUDGET_JWT_SECRET_KEY:?Bitte EQUIBUDGET_JWT_SECRET_KEY (mind. 32 Zeichen) in der .env-Datei setzen}
+      EQUIBUDGET_JWT_ALGORITHM: ${EQUIBUDGET_JWT_ALGORITHM:-HS256}
+      EQUIBUDGET_JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${EQUIBUDGET_JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-480}
+    networks:
+      - equibudget_internal
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api/v1
+    container_name: equibudget-web
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${EQUIBUDGET_BIND_ADDRESS:-127.0.0.1}:${EQUIBUDGET_HTTP_PORT:-8080}:8080"
+    networks:
+      - equibudget_internal
+
+  # Optionaler Pangolin / Newt WireGuard-Tunnel-Container (aktivierbar mit: docker compose --profile pangolin up -d)
+  newt:
+    image: fosrl/newt:latest
+    container_name: equibudget-newt
+    restart: unless-stopped
+    profiles:
+      - pangolin
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      PANGOLIN_ENDPOINT: ${PANGOLIN_ENDPOINT:-}
+      NEWT_ID: ${NEWT_ID:-}
+      NEWT_SECRET: ${NEWT_SECRET:-}
+    networks:
+      - equibudget_internal
+
+volumes:
+  equibudget_pgdata:
+    name: equibudget_pgdata
+
+networks:
+  equibudget_internal:
+    name: equibudget_internal
+    driver: bridge
