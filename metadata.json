@@ -1,0 +1,6 @@
+{
+  "name": "EquiBudget",
+  "description": "Self-hosted multi-tenant household budgeting platform with fair income split calculators, sinking fund accrual accounting, Pangolin/Newt forward-auth, and full Python FastAPI + SQLAlchemy 2.0 backend architecture.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
