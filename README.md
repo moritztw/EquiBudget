@@ -142,7 +142,7 @@ Voraussetzungen: **Docker Engine 24+** mit **Docker Compose v2**.
 
 ```bash
 # 1. Repository klonen
-git clone https://github.com/<dein-nutzer>/equibudget.git
+git clone https://github.com/moritztw/equibudget.git
 cd equibudget
 
 # 2. Umgebungsdatei anlegen
