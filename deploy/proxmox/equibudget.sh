@@ -48,6 +48,7 @@ NONINTERACTIVE="${NONINTERACTIVE:-0}"
 
 CONTAINER_CREATED=0
 TEMP_SCRIPT_FILE=""
+HOST_ARCH=""
 
 # ------------------------------------------------------------------------------
 # Ausgabefunktionen
@@ -150,9 +151,8 @@ pruefe_proxmox_umgebung() {
   command -v pct >/dev/null 2>&1 || abbruch "'pct' nicht gefunden. Bitte auf einem Proxmox-VE-Host ausführen."
   command -v pveversion >/dev/null 2>&1 || abbruch "'pveversion' nicht gefunden."
 
-  local arch
-  arch="$(dpkg --print-architecture)"
-  [[ "${arch}" == "amd64" ]] || abbruch "Nicht unterstützte Host-Architektur '${arch}' (erwartet: amd64)."
+  HOST_ARCH="$(dpkg --print-architecture)"
+  [[ "${HOST_ARCH}" == "amd64" || "${HOST_ARCH}" == "arm64" ]] || abbruch "Nicht unterstützte Host-Architektur '${HOST_ARCH}' (erwartet: amd64 oder arm64)."
 
   local pve_ver pve_major
   pve_ver="$(pveversion | awk -F'/' '{print $2}' | cut -d'-' -f1)"
@@ -327,22 +327,23 @@ pruefe_debian13_host_kompatibilitaet() {
 ermittle_lxc_template() {
   local tmpl_storage="$1"
   local praefix="${OS_DISTRO}-${OS_VERSION}-standard_"
+  local arch_muster="_${HOST_ARCH}\\.tar\\."
 
   info "Aktualisiere Proxmox-Template-Katalog..."
   pveam update >/dev/null 2>&1 || warn "pveam update meldete eine Warnung – fahre mit lokalem Katalog fort."
 
   local gefunden=""
-  gefunden="$(pveam available -section system 2>/dev/null | awk -v p="${praefix}" '$2 ~ "^"p {print $2}' | sort -V | tail -n1)"
+  gefunden="$(pveam available -section system 2>/dev/null | awk -v p="${praefix}" -v a="${arch_muster}" '$2 ~ "^"p && $2 ~ a {print $2}' | sort -V | tail -n1)"
 
   if [[ -z "${gefunden}" && "${OS_DISTRO}" == "debian" && "${OS_VERSION}" == "13" ]]; then
-    warn "Template '${praefix}*' auf diesem Proxmox-Host nicht im Katalog gefunden – wechsle auf Ubuntu 24.04 LTS."
+    warn "Template '${praefix}*_${HOST_ARCH}' auf diesem Proxmox-Host nicht im Katalog gefunden – wechsle auf Ubuntu 24.04 LTS."
     OS_DISTRO="ubuntu"
     OS_VERSION="24.04"
     praefix="ubuntu-24.04-standard_"
-    gefunden="$(pveam available -section system 2>/dev/null | awk -v p="${praefix}" '$2 ~ "^"p {print $2}' | sort -V | tail -n1)"
+    gefunden="$(pveam available -section system 2>/dev/null | awk -v p="${praefix}" -v a="${arch_muster}" '$2 ~ "^"p && $2 ~ a {print $2}' | sort -V | tail -n1)"
   fi
 
-  [[ -n "${gefunden}" ]] || abbruch "Kein passendes Standard-Template (${praefix}*) über 'pveam available' gefunden."
+  [[ -n "${gefunden}" ]] || abbruch "Kein passendes Standard-Template (${praefix}*_${HOST_ARCH}.tar.*) über 'pveam available' gefunden."
 
   if ! pveam list "${tmpl_storage}" 2>/dev/null | awk '{print $1}' | grep -Fq "${gefunden}"; then
     info "Lade LXC-Template '${gefunden}' auf Storage '${tmpl_storage}' herunter..."
@@ -463,7 +464,7 @@ starte_host_installation() {
 
   info "Erstelle LXC-Container ${CTID} (${HOSTNAME_CT}, ${OS_DISTRO} ${OS_VERSION})..."
   pct create "${CTID}" "${tmpl_storage}:vztmpl/${TEMPLATE_DATEI}" \
-    --arch amd64 \
+    --arch "${HOST_ARCH}" \
     --ostype "${OS_DISTRO}" \
     --hostname "${HOSTNAME_CT}" \
     --unprivileged "${CT_UNPRIVILEGED}" \

@@ -101,9 +101,12 @@ case "\$1" in
   available)
     if [[ "\${MOCK_NO_DEBIAN13:-0}" == "1" ]]; then
       printf "system          ubuntu-24.04-standard_24.04-2_amd64.tar.zst\n"
+      printf "system          ubuntu-24.04-standard_24.04-2_arm64.tar.zst\n"
     else
-      printf "system          debian-13-standard_13.1-1_amd64.tar.zst\n"
+      printf "system          debian-13-standard_13.6-1_amd64.tar.zst\n"
+      printf "system          debian-13-standard_13.6-1_arm64.tar.zst\n"
       printf "system          ubuntu-24.04-standard_24.04-2_amd64.tar.zst\n"
+      printf "system          ubuntu-24.04-standard_24.04-2_arm64.tar.zst\n"
     fi
     ;;
   list) exit 0 ;;
@@ -155,11 +158,14 @@ PATH="${MOCK_BIN}:${PATH}" \
   NONINTERACTIVE=1 \
   bash "${SKRIPT_PFAD}" >/dev/null
 
-erwarte_erfolg "Debian-13-Template wurde heruntergeladen" \
-  grep -Fq "pveam download local debian-13-standard_13.1-1_amd64.tar.zst" "${LOG_DATEI}"
+erwarte_erfolg "Auf amd64-Host wird gezielt das amd64-Template (nicht arm64) heruntergeladen" \
+  grep -Fq "pveam download local debian-13-standard_13.6-1_amd64.tar.zst" "${LOG_DATEI}"
+
+erwarte_fehler "Kein arm64-Template auf amd64-Host verwendet" \
+  grep -Fq "arm64.tar" "${LOG_DATEI}"
 
 erwarte_erfolg "Unprivilegierter LXC 105 mit keyctl=1,nesting=1 erstellt" \
-  grep -Fq "pct create 105 local:vztmpl/debian-13-standard_13.1-1_amd64.tar.zst --arch amd64 --ostype debian --hostname equibudget --unprivileged 1 --features keyctl=1,nesting=1 --cores 2 --memory 1024 --swap 512 --rootfs local-lvm:6 --net0 name=eth0,bridge=vmbr0,ip=dhcp --onboot 1" "${LOG_DATEI}"
+  grep -Fq "pct create 105 local:vztmpl/debian-13-standard_13.6-1_amd64.tar.zst --arch amd64 --ostype debian --hostname equibudget --unprivileged 1 --features keyctl=1,nesting=1 --cores 2 --memory 1024 --swap 512 --rootfs local-lvm:6 --net0 name=eth0,bridge=vmbr0,ip=dhcp --onboot 1" "${LOG_DATEI}"
 
 erwarte_fehler "pct create übergibt kein fehleranfälliges --timezone Flag mehr" \
   grep -Fq -- "--timezone" "${LOG_DATEI}"
