@@ -520,14 +520,24 @@ starte_host_installation() {
 # ==============================================================================
 konfiguriere_basis_system() {
   export DEBIAN_FRONTEND=noninteractive
-  info "Aktualisiere Paketquellen und installiere Systempakete..."
+  info "Aktualisiere Paketquellen und richte UTF-8-System-Locales ein..."
   apt-get update -qq
+  apt-get install -y -qq --no-install-recommends locales
+
+  # UTF-8 Locales vor der PostgreSQL-Installation erzeugen, damit der Initial-Cluster UTF8 nutzt
+  sed -i 's/^# *\(de_DE.UTF-8 UTF-8\)/\1/' /etc/locale.gen || true
+  sed -i 's/^# *\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen || true
+  locale-gen >/dev/null
+  update-locale LANG=en_US.UTF-8
+  export LANG=en_US.UTF-8
+  export LC_ALL=en_US.UTF-8
+
+  info "Installiere Systempakete (PostgreSQL, Python, Nginx, Git)..."
   apt-get install -y -qq --no-install-recommends \
     ca-certificates \
     curl \
     git \
     gnupg \
-    locales \
     nginx \
     openssl \
     postgresql \
@@ -535,12 +545,6 @@ konfiguriere_basis_system() {
     python3 \
     python3-pip \
     python3-venv
-
-  # UTF-8 Locales aktivieren
-  sed -i 's/^# *\(de_DE.UTF-8 UTF-8\)/\1/' /etc/locale.gen || true
-  sed -i 's/^# *\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen || true
-  locale-gen >/dev/null
-  update-locale LANG=en_US.UTF-8
 
   if [[ -n "${TZ_VALUE}" && -f "/usr/share/zoneinfo/${TZ_VALUE}" ]]; then
     ln -sf "/usr/share/zoneinfo/${TZ_VALUE}" /etc/localtime
@@ -593,7 +597,9 @@ richte_postgresql_und_env_ein() {
   db_pass="$(openssl rand -hex 24)"
   jwt_secret="$(openssl rand -hex 32)"
 
-  runuser -u postgres -- psql -v ON_ERROR_STOP=1 -v db_pass="${db_pass}" <<'SQL' >/dev/null
+  (
+    cd /tmp
+    runuser -u postgres -- psql -v ON_ERROR_STOP=1 -v db_pass="${db_pass}" <<'SQL' >/dev/null
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'equibudget') THEN
@@ -604,9 +610,10 @@ $$;
 ALTER ROLE equibudget WITH PASSWORD :'db_pass';
 SQL
 
-  if ! runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname='equibudget'" | grep -q 1; then
-    runuser -u postgres -- createdb -O equibudget -E UTF8 equibudget
-  fi
+    if ! runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname='equibudget'" | grep -q 1; then
+      runuser -u postgres -- createdb -O equibudget -T template0 -E UTF8 --locale=C.UTF-8 equibudget
+    fi
+  )
 
   cat > "${ENV_FILE}" <<EOF
 EQUIBUDGET_ENVIRONMENT=production
@@ -636,13 +643,15 @@ baue_backend_und_migriere() {
   chown -R "${SYSTEM_USER}:${SYSTEM_USER}" "${APP_ROOT}"
 
   info "Führe Alembic-Datenbankmigrationen aus..."
-  runuser -u "${SYSTEM_USER}" -- bash -c "
-    set -a
-    source '${ENV_FILE}'
-    set +a
-    cd '${REPO_DIR}/household-budget-backend'
-    '${VENV_DIR}/bin/alembic' upgrade head
-  "
+  (
+    cd "${REPO_DIR}/household-budget-backend"
+    runuser -u "${SYSTEM_USER}" -- bash -c "
+      set -a
+      source '${ENV_FILE}'
+      set +a
+      '${VENV_DIR}/bin/alembic' upgrade head
+    "
+  )
   ok "Datenbankschema ist auf dem aktuellen Stand."
 }
 
@@ -690,9 +699,6 @@ ExecStart=${VENV_DIR}/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --wo
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
-PrivateTmp=true
-ProtectHome=true
-ProtectSystem=strict
 
 [Install]
 WantedBy=multi-user.target
@@ -827,7 +833,10 @@ aktualisiere_im_container() {
   backup_datei="${BACKUP_DIR}/equibudget_vor_update_${zeitstempel}.dump"
 
   info "Erstelle automatisches PostgreSQL-Sicherheitsbackup (${backup_datei})..."
-  runuser -u postgres -- pg_dump -Fc equibudget > "${backup_datei}"
+  (
+    cd /tmp
+    runuser -u postgres -- pg_dump -Fc equibudget
+  ) > "${backup_datei}"
   chmod 0600 "${backup_datei}"
   # Nur die 5 neuesten Vorab-Backups aufbewahren
   ls -1t "${BACKUP_DIR}"/equibudget_vor_update_*.dump 2>/dev/null | tail -n +6 | xargs -r rm -f

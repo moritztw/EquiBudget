@@ -237,6 +237,85 @@ fi
 erwarte_erfolg "Rollback zerstört unvollständigen Container rückstandsfrei (--purge)" \
   grep -Fq "pct destroy 105 --purge" "${LOG_DATEI}"
 
+printf "\n=== 7. Regressionstests: Gast-Provisionierung (Locales, PostgreSQL UTF8 & LXC-systemd) ===\n"
+GAST_LOG="${TEST_TMP}/gast_aufrufe.log"
+: > "${GAST_LOG}"
+MOCK_GAST_BIN="${TEST_TMP}/gast_bin"
+mkdir -p "${MOCK_GAST_BIN}"
+
+cat > "${MOCK_GAST_BIN}/apt-get" <<EOF
+#!/usr/bin/env bash
+echo "apt-get \$*" >> "${GAST_LOG}"
+EOF
+
+cat > "${MOCK_GAST_BIN}/locale-gen" <<EOF
+#!/usr/bin/env bash
+echo "locale-gen" >> "${GAST_LOG}"
+EOF
+
+cat > "${MOCK_GAST_BIN}/update-locale" <<EOF
+#!/usr/bin/env bash
+echo "update-locale \$*" >> "${GAST_LOG}"
+EOF
+
+cat > "${MOCK_GAST_BIN}/sed" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+
+cat > "${MOCK_GAST_BIN}/systemctl" <<EOF
+#!/usr/bin/env bash
+echo "systemctl \$*" >> "${GAST_LOG}"
+EOF
+
+cat > "${MOCK_GAST_BIN}/runuser" <<EOF
+#!/usr/bin/env bash
+echo "pwd=\$(pwd) runuser \$*" >> "${GAST_LOG}"
+if [[ "\$*" == *"ON_ERROR_STOP=1"* ]]; then
+  cat >/dev/null || true
+fi
+exit 0
+EOF
+
+cat > "${MOCK_GAST_BIN}/chown" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+
+chmod +x "${MOCK_GAST_BIN}"/*
+
+(
+  export PATH="${MOCK_GAST_BIN}:${PATH}"
+  TZ_VALUE=""
+  konfiguriere_basis_system >/dev/null
+)
+
+ZEILE_LOCALE_GEN="$(grep -n '^locale-gen$' "${GAST_LOG}" | head -n1 | cut -d: -f1)"
+ZEILE_POSTGRES_APT="$(grep -n 'apt-get .*postgresql' "${GAST_LOG}" | head -n1 | cut -d: -f1)"
+
+erwarte_erfolg "UTF-8-Locales (locale-gen) werden VOR der PostgreSQL-Installation erzeugt" \
+  test -n "${ZEILE_LOCALE_GEN}" -a -n "${ZEILE_POSTGRES_APT}" -a "${ZEILE_LOCALE_GEN}" -lt "${ZEILE_POSTGRES_APT}"
+
+TEST_ENV_DATEI="${TEST_TMP}/equibudget.env"
+sed "s|readonly ENV_FILE=.*|readonly ENV_FILE=\"${TEST_ENV_DATEI}\"|" "${SKRIPT_PFAD}" > "${TEST_TMP}/equibudget_gast_test.sh"
+PATH="${MOCK_GAST_BIN}:${PATH}" EQUIBUDGET_SOURCE_ONLY=1 bash -c "
+  source '${TEST_TMP}/equibudget_gast_test.sh'
+  richte_postgresql_und_env_ein >/dev/null
+"
+
+erwarte_erfolg "createdb nutzt explizit '-T template0 -E UTF8 --locale=C.UTF-8' aus /tmp heraus" \
+  grep -Fq "pwd=/tmp runuser -u postgres -- createdb -O equibudget -T template0 -E UTF8 --locale=C.UTF-8 equibudget" "${GAST_LOG}"
+
+erwarte_erfolg "Konfigurationsdatei equibudget.env wurde mit asyncpg-DSN geschrieben" \
+  grep -Fq "EQUIBUDGET_DATABASE_URL=postgresql+asyncpg://equibudget:" "${TEST_ENV_DATEI}"
+
+SYSTEMD_BLOCK="$(declare -f schreibe_systemd_und_nginx)"
+erwarte_erfolg "systemd-Unit behält NoNewPrivileges=true" \
+  bash -c 'grep -Fq "NoNewPrivileges=true" <<<"$1"' _ "${SYSTEMD_BLOCK}"
+
+erwarte_fehler "systemd-Unit enthält kein LXC-inkompatibles ProtectSystem=strict mehr" \
+  bash -c 'grep -Eq "ProtectSystem=|ProtectHome=|PrivateTmp=" <<<"$1"' _ "${SYSTEMD_BLOCK}"
+
 printf "\n======================================================================\n"
 if (( FEHLER_ZAEHLER == 0 )); then
   printf "ALLE TESTS ERFOLGREICH BESTANDEN.\n"
