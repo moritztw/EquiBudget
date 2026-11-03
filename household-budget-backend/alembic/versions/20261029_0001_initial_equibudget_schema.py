@@ -468,7 +468,7 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint(
             "amount > 0",
-            name="ck_sinking_fund_rate_revisions_sinking_fund_revision_amount_positive",
+            name="ck_sinking_fund_rate_revisions_amount_positive",
         ),
         sa.ForeignKeyConstraint(
             ["sinking_fund_id"],
@@ -780,7 +780,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["linked_transaction_id"],
             ["transactions.id"],
-            name="fk_sinking_fund_ledger_entries_linked_transaction_id_transactions",
+            name="fk_sinking_ledger_entries_linked_tx_id_transactions",
             ondelete="SET NULL",
         ),
         sa.ForeignKeyConstraint(

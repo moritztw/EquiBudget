@@ -316,6 +316,10 @@ erwarte_erfolg "systemd-Unit behält NoNewPrivileges=true" \
 erwarte_fehler "systemd-Unit enthält kein LXC-inkompatibles ProtectSystem=strict mehr" \
   bash -c 'grep -Eq "ProtectSystem=|ProtectHome=|PrivateTmp=" <<<"$1"' _ "${SYSTEMD_BLOCK}"
 
+REPO_WURZEL="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+erwarte_erfolg "Alle PostgreSQL-Bezeichner in Alembic & ORM halten das 63-Zeichen-Limit ein" \
+  python3 -m unittest discover -s "${REPO_WURZEL}/household-budget-backend/tests" -p "test_*.py" -q
+
 printf "\n======================================================================\n"
 if (( FEHLER_ZAEHLER == 0 )); then
   printf "ALLE TESTS ERFOLGREICH BESTANDEN.\n"

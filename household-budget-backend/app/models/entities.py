@@ -413,7 +413,7 @@ class SinkingFundRateRevision(UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampM
             "valid_from",
             name="uq_sinking_fund_rate_revision_valid_from",
         ),
-        CheckConstraint("amount > 0", name="sinking_fund_revision_amount_positive"),
+        CheckConstraint("amount > 0", name="amount_positive"),
     )
 
     sinking_fund_id: Mapped[uuid.UUID] = mapped_column(
@@ -458,7 +458,11 @@ class SinkingFundLedgerEntry(UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMi
     )
     linked_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey("transactions.id", ondelete="SET NULL"),
+        ForeignKey(
+            "transactions.id",
+            name="fk_sinking_ledger_entries_linked_tx_id_transactions",
+            ondelete="SET NULL",
+        ),
         nullable=True,
         unique=True,
     )
