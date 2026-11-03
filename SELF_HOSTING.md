@@ -2,7 +2,37 @@
 
 Dieses Repository enthält das vollständige Self-Hosting-Setup für **EquiBudget** (Multi-Tenant Haushalts-ERP mit Sinking-Fund-Rückstellungen, Einkommens-Aufteilung, DKB-CSV-Import und PWA-Unterstützung).
 
-## 1. Architektur im Container-Betrieb
+## 1. Proxmox VE — Natives LXC-Setup (Empfohlen für Homelabs)
+
+Auf einem **Proxmox-VE-Host (ab PVE 8.0)** erstellt das All-in-One-Skript `deploy/proxmox/equibudget.sh` vollautomatisch einen unprivilegierten **Debian-13-(Trixie)-Container** mit nativem **PostgreSQL 17**, **Python 3.13 (`systemd`)** und **Nginx** (ohne Docker-in-LXC-Overhead und ohne Newt im Container).
+
+### Erstellung über die Proxmox-Host-Shell (Einzeiler)
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/moritztw/EquiBudget/main/deploy/proxmox/equibudget.sh)"
+```
+
+Im `whiptail`-Menü stehen zwei Modi bereit:
+- **Standard:** Debian 13 Trixie, Unprivileged, `2 vCPU`, `1024 MiB RAM`, `6 GB Disk`, DHCP auf `vmbr0`, nächste freie CTID.
+- **Erweitert:** Freie Wahl von CTID, Hostname, statischer IPv4/CIDR + Gateway, VLAN-Tag, Ressourcen, Storage-Pool und Forward-Auth-Vertrauen (`X-Forwarded-User`).
+
+### Wichtige Pfade & Befehle im LXC-Container
+
+| Zweck | Pfad / Befehl im LXC |
+| :--- | :--- |
+| **Update (inkl. automatischem Vorab-DB-Backup & Migration)** | `update` *(oder `equibudget update`)* |
+| **System- & Readiness-Status** | `equibudget status` |
+| **Laufzeitkonfiguration & Secrets** | `/etc/equibudget/equibudget.env` |
+| **Automatische Vorab-Backups (letzte 5 Stände)** | `/var/backups/equibudget/` |
+| **Backend-Logs verfolgen** | `journalctl -u equibudget-backend -f` |
+| **Manuelles PostgreSQL-Backup (`pg_dump`)** | `runuser -u postgres -- pg_dump -Fc equibudget > equibudget_$(date +%F).dump` |
+| **PostgreSQL-Restore (`pg_restore`)** | `runuser -u postgres -- pg_restore -U postgres -d equibudget --clean --if-exists equibudget.dump` |
+
+Ein zentraler **Pangolin/Newt-Connector** oder Reverse Proxy im Heimnetz zeigt einfach auf `http://<LXC-IP>:80`.
+
+---
+
+## 2. Architektur im Docker-Container-Betrieb
 
 Alle Komponenten laufen isoliert im internen Docker-Netzwerk `equibudget_internal`. Lediglich der `web`-Gateway-Port (Standard `127.0.0.1:8080`) wird nach außen bzw. an **Pangolin / Newt** bereitgestellt:
 
@@ -13,7 +43,7 @@ Alle Komponenten laufen isoliert im internen Docker-Netzwerk `equibudget_interna
 
 ---
 
-## 2. Schnellstart (Erstinbetriebnahme)
+## 3. Schnellstart mit Docker Compose
 
 ```bash
 # 1. Konfigurationsdatei anlegen
@@ -33,9 +63,9 @@ curl -fsS http://127.0.0.1:8080/health/ready
 
 ---
 
-## 3. Erster Aufruf & Setup-Assistent (ohne Testdaten)
+## 4. Erster Aufruf & Setup-Assistent (ohne Testdaten)
 
-Beim ersten Öffnen von `http://127.0.0.1:8080` (bzw. deiner Pangolin-Domain) erkennt EquiBudget automatisch eine frische Instanz und startet den **5-stufigen Ersteinrichtungs-Assistenten**:
+Beim ersten Öffnen der Web-Oberfläche erkennt EquiBudget automatisch eine frische Instanz und startet den **5-stufigen Ersteinrichtungs-Assistenten**:
 
 1. **Haushalt & Basis:** Haushaltsname, Startmonat (`YYYY-MM`), Währung und Standard-Aufteilungsmodell (z. B. *Gleiches Taschengeld*).
 2. **Personen & Einkommen:** Eigene Haushaltsmitglieder inkl. realem Netto für den Startmonat.
@@ -47,25 +77,23 @@ Es werden dabei **keinerlei Test- oder Demo-Buchungen** in die Datenbank geschri
 
 ---
 
-## 4. Anbindung an Pangolin / Newt (Forward-Auth)
+## 5. Anbindung an Pangolin / Newt (Forward-Auth)
 
-### Variante A: Newt direkt im selben Compose-Stack mitstarten
+### Variante A: Zentraler Newt-Agent oder Reverse Proxy (Standard für Proxmox LXC)
+Zeige in Pangolin / Caddy / Traefik auf `http://<LXC-IP>:80` (bzw. bei Docker auf `http://<Host-IP>:8080`) und aktiviere SSO / Forward-Auth (`X-Forwarded-User` und `X-Forwarded-Email` werden von Nginx unverändert an FastAPI durchgereicht).
+
+### Variante B: Newt direkt im Docker-Compose-Stack mitstarten
 Trage `PANGOLIN_ENDPOINT`, `NEWT_ID` und `NEWT_SECRET` in `.env` ein und starte mit:
 
 ```bash
 docker compose --profile pangolin up -d --build
 ```
 
-Konfiguriere in der Pangolin-Oberfläche als Ressource-Ziel einfach:
-- **Target Host:** `http://web:8080`
-- **SSO / Forward-Auth:** Aktivieren (Pangolin setzt `X-Forwarded-User` und `X-Forwarded-Email`; `deploy/nginx/default.conf` reicht diese Header unverändert an FastAPI durch).
-
-### Variante B: Vorhandener zentraler Newt-Agent oder Reverse Proxy auf dem Host
-Belasse `EQUIBUDGET_BIND_ADDRESS=127.0.0.1` (oder die LAN-IP deines Hosts) und zeige in Pangolin / Caddy / Traefik auf `http://127.0.0.1:8080`.
+Konfiguriere in der Pangolin-Oberfläche als Ressource-Ziel `http://web:8080`.
 
 ---
 
-## 5. Backup, Restore & Updates
+## 6. Backup, Restore & Updates (Docker Compose)
 
 ### Datenbank-Backup erstellen (`pg_dump`)
 ```bash

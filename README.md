@@ -10,12 +10,13 @@
 2. [Kernfunktionen im Detail](#kernfunktionen-im-detail)
 3. [Domänenmodell & Buchhaltungsprinzipien](#domänenmodell--buchhaltungsprinzipien)
 4. [Systemarchitektur & Tech-Stack](#systemarchitektur--tech-stack)
-5. [Schnellstart mit Docker Compose](#schnellstart-mit-docker-compose)
-6. [Ersteinrichtung ohne Testdaten (Setup-Assistent)](#ersteinrichtung-ohne-testdaten-setup-assistent)
-7. [Reverse Proxy & Pangolin / Newt (Forward-Auth)](#reverse-proxy--pangolin--newt-forward-auth)
-8. [Lokale Entwicklung](#lokale-entwicklung)
-9. [REST-API-Übersicht](#rest-api-übersicht)
-10. [Projektstruktur](#projektstruktur)
+5. [Installation auf Proxmox VE (LXC)](#installation-auf-proxmox-ve-lxc)
+6. [Schnellstart mit Docker Compose](#schnellstart-mit-docker-compose)
+7. [Ersteinrichtung ohne Testdaten (Setup-Assistent)](#ersteinrichtung-ohne-testdaten-setup-assistent)
+8. [Reverse Proxy & Pangolin / Newt (Forward-Auth)](#reverse-proxy--pangolin--newt-forward-auth)
+9. [Lokale Entwicklung](#lokale-entwicklung)
+10. [REST-API-Übersicht](#rest-api-übersicht)
+11. [Projektstruktur](#projektstruktur)
 
 ---
 
@@ -136,14 +137,27 @@ Tenant (Haushalt / Mandant)
 
 ---
 
+## Installation auf Proxmox VE (LXC)
+
+Auf einem **Proxmox-VE-Host (ab PVE 8.0)** erstellt das Community-Style-Installationsskript vollautomatisch einen schlanken, unprivilegierten **Debian-13-(Trixie)-Container** mit nativem **PostgreSQL 17**, **Python 3.13 (`systemd`)** und **Nginx** (`2 vCPU`, `1024 MiB RAM`, `6 GB Disk`):
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/moritztw/EquiBudget/main/deploy/proxmox/equibudget.sh)"
+```
+
+- **Interaktiver Assistent (`whiptail`):** Wahl zwischen Express-Installation (*Standard*) und *Erweitert* (eigene CTID, statische IPv4/CIDR, VLAN, Storage-Pool, Ressourcen).
+- **Integrierte Update-Funktion:** Innerhalb der LXC-Konsole genügt jederzeit der Befehl **`update`** (erstellt automatisch ein `pg_dump`-Sicherheitsbackup unter `/var/backups/equibudget/`, zieht den neuesten Git-Stand, führt `alembic upgrade head` aus und baut die PWA neu).
+
+---
+
 ## Schnellstart mit Docker Compose
 
 Voraussetzungen: **Docker Engine 24+** mit **Docker Compose v2**.
 
 ```bash
 # 1. Repository klonen
-git clone https://github.com/moritztw/equibudget.git
-cd equibudget
+git clone https://github.com/moritztw/EquiBudget.git
+cd EquiBudget
 
 # 2. Umgebungsdatei anlegen
 cp .env.example .env
@@ -254,8 +268,10 @@ Bei laufendem Backend steht die interaktive OpenAPI-/Swagger-Dokumentation unter
 ├── docker-compose.yml                  # Produktions-Stack (Postgres 16, FastAPI, Nginx PWA, optional Newt)
 ├── Dockerfile                          # Multi-Stage Build für Frontend-PWA + Nginx Reverse Proxy
 ├── .env.example                        # Dokumentierte Umgebungsvariablen für Self-Hosting
-├── SELF_HOSTING.md                     # Betriebshandbuch (Pangolin/Newt, Backups, Updates)
-├── deploy/nginx/default.conf           # Nginx Gateway-, Caching- & Forward-Auth-Konfiguration
+├── SELF_HOSTING.md                     # Betriebshandbuch (Proxmox LXC, Pangolin/Newt, Backups, Updates)
+├── deploy/
+│   ├── nginx/default.conf              # Nginx Gateway-, Caching- & Forward-Auth-Konfiguration (Docker)
+│   └── proxmox/                        # Proxmox VE LXC All-in-One Installer, Updater & Testsuite
 ├── household-budget-backend/           # Python 3.12 / FastAPI / SQLAlchemy 2.0 Backend
 │   ├── Dockerfile                      # Schlankes Multi-Stage Image (Rootless UID 10001)
 │   ├── docker-entrypoint.sh            # Automatische Alembic-Migration + Uvicorn-Start
