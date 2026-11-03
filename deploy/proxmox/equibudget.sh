@@ -71,9 +71,11 @@ aufraeumen_bei_exit() {
 }
 
 fehler_rollback_host() {
-  local zeile="$1"
-  err "Installation fehlgeschlagen in Zeile ${zeile}."
+  local zeile="$1" befehl="${2:-unbekannt}"
+  trap - ERR
+  err "Installation fehlgeschlagen in Zeile ${zeile} (Befehl: ${befehl})."
   if [[ "${CONTAINER_CREATED}" -eq 1 && -n "${CTID}" ]]; then
+    CONTAINER_CREATED=0
     warn "Bereinige unvollständigen LXC-Container ${CTID}..."
     pct stop "${CTID}" >/dev/null 2>&1 || true
     pct destroy "${CTID}" --purge >/dev/null 2>&1 || true
@@ -293,6 +295,35 @@ dialog_erweiterte_einstellungen() {
   fi
 }
 
+pruefe_debian13_host_kompatibilitaet() {
+  [[ "${OS_DISTRO}" == "debian" && "${OS_VERSION}" == "13" ]] || return 0
+
+  local debian_pm="${EQUIBUDGET_DEBIAN_PM_PATH:-/usr/share/perl5/PVE/LXC/Setup/Debian.pm}"
+  [[ -f "${debian_pm}" ]] || return 0
+
+  # Ältere pve-container-Versionen auf PVE 8 prüfen '$version <= 13' (lehnt 13.1/13.2 beim Start ab)
+  if grep -Eq '\$version\s*(<=\s*1[23]\b|<\s*13\b)' "${debian_pm}"; then
+    warn "Veraltetes 'pve-container'-Paket erkannt (${debian_pm} lehnt Debian-13-Point-Releases wie 13.1 beim Container-Start ab)."
+    warn "Host-Fix für Debian 13: apt update && apt install --only-upgrade pve-container"
+
+    if [[ "${NONINTERACTIVE}" != "1" ]] && command -v whiptail >/dev/null 2>&1; then
+      if whiptail --backtitle "${APP_NAME} LXC Setup" \
+        --title "Hinweis: Proxmox pve-container veraltet für Debian 13.x" \
+        --yesno "Dein Proxmox-Host nutzt noch eine ältere Version von 'pve-container', die Debian 13.x beim Start ablehnt.\n\nSoll stattdessen direkt mit Ubuntu 24.04 LTS fortgefahren werden?\n\n(Bei 'Nein' wird abgebrochen, damit du zuerst 'apt update && apt install --only-upgrade pve-container' auf dem Host ausführen kannst.)" 16 74; then
+        OS_DISTRO="ubuntu"
+        OS_VERSION="24.04"
+        info "Wechsle auf Basis-Template Ubuntu 24.04 LTS."
+      else
+        abbruch "Abgebrochen. Bitte aktualisiere 'pve-container' auf dem Proxmox-Host und starte das Skript erneut."
+      fi
+    else
+      warn "Nicht-interaktiver Modus: Wechsle automatisch auf Ubuntu 24.04 LTS."
+      OS_DISTRO="ubuntu"
+      OS_VERSION="24.04"
+    fi
+  fi
+}
+
 ermittle_lxc_template() {
   local tmpl_storage="$1"
   local praefix="${OS_DISTRO}-${OS_VERSION}-standard_"
@@ -321,6 +352,25 @@ ermittle_lxc_template() {
   fi
 
   TEMPLATE_DATEI="${gefunden}"
+}
+
+starte_container_mit_diagnose() {
+  local id="$1"
+  if pct start "${id}"; then
+    return 0
+  fi
+
+  local debug_log="/tmp/equibudget-lxc-${id}-debug.log"
+  warn "Erster Startversuch für Container ${id} fehlgeschlagen – führe Diagnose ('pct start ${id} --debug') aus..."
+  pct start "${id}" --debug >"${debug_log}" 2>&1 || true
+
+  if [[ -s "${debug_log}" ]]; then
+    err "--- Diagnose-Auszug (pct start ${id} --debug) ---"
+    grep -Ei 'error|failed|unsupported|denied|hook|conf|invalid|die' "${debug_log}" | tail -n 25 >&2 \
+      || tail -n 25 "${debug_log}" >&2
+    err "--- Vollständiges Debug-Log gespeichert unter: ${debug_log} ---"
+  fi
+  return 1
 }
 
 warte_auf_container_netzwerk() {
@@ -360,8 +410,10 @@ starte_host_installation() {
   if [[ -z "${CTID}" ]]; then
     CTID="$(pvesh get /cluster/nextid)"
   fi
-  if [[ -f /etc/timezone ]]; then
-    TZ_VALUE="${TZ:-$(tr -d '[:space:]' < /etc/timezone)}"
+  if [[ -f /etc/timezone && -z "${TZ:-}" ]]; then
+    local host_tz
+    host_tz="$(tr -d '[:space:]' < /etc/timezone)"
+    [[ -n "${host_tz}" ]] && TZ_VALUE="${host_tz}"
   fi
 
   if [[ "${NONINTERACTIVE}" != "1" ]]; then
@@ -386,6 +438,8 @@ starte_host_installation() {
     ctid_ist_frei "${CTID}" || abbruch "CTID '${CTID}' ist bereits vergeben."
   fi
 
+  pruefe_debian13_host_kompatibilitaet
+
   local tmpl_storage ct_storage
   tmpl_storage="$(waehle_storage "vztmpl" "Template-Storage" "${TEMPLATE_STORAGE:-}")"
   ct_storage="$(waehle_storage "rootdir" "Container-Root-Storage" "${CONTAINER_STORAGE:-}")"
@@ -400,7 +454,12 @@ starte_host_installation() {
   fi
   [[ -n "${VLAN_TAG}" ]] && net_spec+=",tag=${VLAN_TAG}"
 
-  trap 'fehler_rollback_host $LINENO' ERR
+  local ct_features="nesting=1"
+  if [[ "${CT_UNPRIVILEGED}" == "1" ]]; then
+    ct_features="keyctl=1,nesting=1"
+  fi
+
+  trap 'fehler_rollback_host "$LINENO" "$BASH_COMMAND"' ERR
 
   info "Erstelle LXC-Container ${CTID} (${HOSTNAME_CT}, ${OS_DISTRO} ${OS_VERSION})..."
   pct create "${CTID}" "${tmpl_storage}:vztmpl/${TEMPLATE_DATEI}" \
@@ -408,20 +467,19 @@ starte_host_installation() {
     --ostype "${OS_DISTRO}" \
     --hostname "${HOSTNAME_CT}" \
     --unprivileged "${CT_UNPRIVILEGED}" \
-    --features keyctl=1,nesting=1 \
+    --features "${ct_features}" \
     --cores "${CORE_COUNT}" \
     --memory "${RAM_SIZE}" \
     --swap "${SWAP_SIZE}" \
     --rootfs "${ct_storage}:${DISK_SIZE}" \
     --net0 "${net_spec}" \
-    --onboot 1 \
-    --timezone "${TZ_VALUE}"
+    --onboot 1
 
   CONTAINER_CREATED=1
   ok "Container ${CTID} erfolgreich angelegt."
 
   info "Starte Container ${CTID}..."
-  pct start "${CTID}"
+  starte_container_mit_diagnose "${CTID}"
   warte_auf_container_netzwerk "${CTID}"
 
   info "Übertrage Installer in Container ${CTID} und starte Anwendungs-Setup..."

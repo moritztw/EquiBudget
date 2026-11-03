@@ -116,7 +116,16 @@ cat > "${MOCK_BIN}/pct" <<EOF
 echo "pct \$*" >> "${LOG_DATEI}"
 case "\$1" in
   status) exit 1 ;;
-  create|start|push|set|stop|destroy) exit 0 ;;
+  create|push|set|stop|destroy) exit 0 ;;
+  start)
+    if [[ "\${MOCK_FAIL_START:-0}" == "1" ]]; then
+      if [[ "\$*" == *"--debug"* ]]; then
+        echo "lxc-start 105 ERROR lxc_conf - Script exited with status 25: unsupported debian version '13.1'"
+      fi
+      exit 1
+    fi
+    exit 0
+    ;;
   exec)
     if [[ "\$*" == *"ip -4 addr"* ]]; then
       echo "    inet 192.168.178.105/24 brd 192.168.178.255 scope global eth0"
@@ -135,17 +144,25 @@ esac
 EOF
 
 chmod +x "${MOCK_BIN}"/*
+MODERN_DEBIAN_PM="${TEST_TMP}/Debian-modern.pm"
+cat > "${MODERN_DEBIAN_PM}" <<'EOF'
+die "unsupported debian version '$version'\n" if !($version >= 4 && $version < 15);
+EOF
 
 PATH="${MOCK_BIN}:${PATH}" \
   EQUIBUDGET_TEST_EUID=0 \
+  EQUIBUDGET_DEBIAN_PM_PATH="${MODERN_DEBIAN_PM}" \
   NONINTERACTIVE=1 \
   bash "${SKRIPT_PFAD}" >/dev/null
 
 erwarte_erfolg "Debian-13-Template wurde heruntergeladen" \
   grep -Fq "pveam download local debian-13-standard_13.1-1_amd64.tar.zst" "${LOG_DATEI}"
 
-erwarte_erfolg "Unprivilegierter LXC 105 mit 2 vCPU, 1024 MB RAM & 6 GB Disk erstellt" \
-  grep -Fq "pct create 105 local:vztmpl/debian-13-standard_13.1-1_amd64.tar.zst --arch amd64 --ostype debian --hostname equibudget --unprivileged 1 --features keyctl=1,nesting=1 --cores 2 --memory 1024 --swap 512 --rootfs local-lvm:6 --net0 name=eth0,bridge=vmbr0,ip=dhcp" "${LOG_DATEI}"
+erwarte_erfolg "Unprivilegierter LXC 105 mit keyctl=1,nesting=1 erstellt" \
+  grep -Fq "pct create 105 local:vztmpl/debian-13-standard_13.1-1_amd64.tar.zst --arch amd64 --ostype debian --hostname equibudget --unprivileged 1 --features keyctl=1,nesting=1 --cores 2 --memory 1024 --swap 512 --rootfs local-lvm:6 --net0 name=eth0,bridge=vmbr0,ip=dhcp --onboot 1" "${LOG_DATEI}"
+
+erwarte_fehler "pct create übergibt kein fehleranfälliges --timezone Flag mehr" \
+  grep -Fq -- "--timezone" "${LOG_DATEI}"
 
 erwarte_erfolg "Gast-Installation (--install-guest) wurde im Container ausgelöst" \
   grep -Fq "/usr/local/bin/equibudget --install-guest" "${LOG_DATEI}"
@@ -153,10 +170,56 @@ erwarte_erfolg "Gast-Installation (--install-guest) wurde im Container ausgelös
 erwarte_erfolg "Proxmox-Container-Notiz enthält ermittelte Container-IP" \
   grep -Fq "http://192.168.178.105" "${LOG_DATEI}"
 
-printf "\n=== 4. Mock-Integrationstest: Rollback bei fehlerhafter Gast-Installation ===\n"
+printf "\n=== 4. Mock-Test: Privilegierter Container ohne keyctl=1 & veraltetes Debian.pm ===\n"
+: > "${LOG_DATEI}"
+ALTES_DEBIAN_PM="${TEST_TMP}/Debian-old.pm"
+cat > "${ALTES_DEBIAN_PM}" <<'EOF'
+die "unsupported debian version '$version'\n" if !($version >= 4 && $version <= 13);
+EOF
+
+PATH="${MOCK_BIN}:${PATH}" \
+  EQUIBUDGET_TEST_EUID=0 \
+  EQUIBUDGET_DEBIAN_PM_PATH="${ALTES_DEBIAN_PM}" \
+  CT_UNPRIVILEGED=0 \
+  NONINTERACTIVE=1 \
+  bash "${SKRIPT_PFAD}" >/dev/null 2>&1
+
+erwarte_erfolg "Veraltetes Debian.pm wechselt automatisch auf Ubuntu 24.04 LTS" \
+  grep -Fq "pct create 105 local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst" "${LOG_DATEI}"
+
+erwarte_erfolg "Privilegierter Container nutzt '--features nesting=1' (ohne keyctl=1)" \
+  grep -Fq -- "--unprivileged 0 --features nesting=1" "${LOG_DATEI}"
+
+printf "\n=== 5. Mock-Test: Diagnose-Log & Rollback bei pct-start-Fehler ===\n"
+: > "${LOG_DATEI}"
+rm -f /tmp/equibudget-lxc-105-debug.log
+STDERR_START="${TEST_TMP}/stderr_start.log"
+if PATH="${MOCK_BIN}:${PATH}" \
+  EQUIBUDGET_TEST_EUID=0 \
+  EQUIBUDGET_DEBIAN_PM_PATH="${MODERN_DEBIAN_PM}" \
+  NONINTERACTIVE=1 \
+  MOCK_FAIL_START=1 \
+  bash "${SKRIPT_PFAD}" >/dev/null 2>"${STDERR_START}"; then
+  fehl_test "Fehlgeschlagener pct start hätte abbrechen müssen"
+else
+  ok_test "Fehlgeschlagener pct start bricht kontrolliert ab"
+fi
+
+erwarte_erfolg "Diagnose führt 'pct start 105 --debug' vor dem Rollback aus" \
+  grep -Fq "pct start 105 --debug" "${LOG_DATEI}"
+
+erwarte_erfolg "Konkrete Hook-Fehlermeldung wird im Terminal ausgegeben" \
+  grep -Fq "unsupported debian version '13.1'" "${STDERR_START}"
+
+erwarte_erfolg "Rollback zerstört Container genau einmal (--purge)" \
+  test "$(grep -Fc 'pct destroy 105 --purge' "${LOG_DATEI}")" -eq 1
+rm -f /tmp/equibudget-lxc-105-debug.log
+
+printf "\n=== 6. Mock-Integrationstest: Rollback bei fehlerhafter Gast-Installation ===\n"
 : > "${LOG_DATEI}"
 if PATH="${MOCK_BIN}:${PATH}" \
   EQUIBUDGET_TEST_EUID=0 \
+  EQUIBUDGET_DEBIAN_PM_PATH="${MODERN_DEBIAN_PM}" \
   NONINTERACTIVE=1 \
   MOCK_FAIL_GUEST=1 \
   bash "${SKRIPT_PFAD}" >/dev/null 2>&1; then
